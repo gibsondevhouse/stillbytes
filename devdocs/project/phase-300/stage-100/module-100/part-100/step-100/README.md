@@ -1,4 +1,5 @@
 ### Day 15-17: State Management (2 hours)
+
 ```
 Day 15: Paste Prompt L: "Create useEditing hook..."
         → Generates src/hooks/useEditing.ts (~200 lines)

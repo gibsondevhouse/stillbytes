@@ -3,6 +3,7 @@
 ## What You Need in `.github/` (CI/CD for AI-Generated Code)
 
 ### `.github/workflows/build.yml`
+
 ```yaml
 name: Build Electron App
 
@@ -23,11 +24,11 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - run: npm install
       - run: npm run build
       - run: npm run electron:build
-      
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
@@ -40,6 +41,7 @@ jobs:
 ---
 
 ### `.github/workflows/test.yml`
+
 ```yaml
 name: Tests
 
@@ -58,11 +60,11 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - run: npm install
       - run: npm run test
       - run: npm run lint
-      
+
       - name: Upload coverage
         uses: codecov/codecov-action@v3
 ```
@@ -72,6 +74,7 @@ jobs:
 ---
 
 ### `.github/workflows/release.yml`
+
 ```yaml
 name: Release
 
@@ -92,11 +95,11 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-      
+
       - run: npm install
       - run: npm run build
       - run: npm run electron:build
-      
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -110,6 +113,7 @@ jobs:
 ---
 
 ### `.github/ISSUE_TEMPLATE/bug_report.md`
+
 ```markdown
 ---
 name: Bug report
@@ -119,9 +123,11 @@ labels: 'bug'
 ---
 
 ## Describe the bug
+
 A clear description of what happened.
 
 ## Steps to reproduce
+
 1. Import folder with X photos
 2. Select photo
 3. Edit HSL to [value]
@@ -129,14 +135,17 @@ A clear description of what happened.
 5. Actual: [what happened instead]
 
 ## Screenshots
+
 If applicable, add screenshots showing the issue.
 
 ## System info
+
 - OS: [macOS 14 / Windows 11]
 - App version: v1.0
 - Number of photos imported: [X]
 
 ## Logs
+
 Paste any error messages from console (F12).
 ```
 
@@ -145,6 +154,7 @@ Paste any error messages from console (F12).
 ---
 
 ### `.github/ISSUE_TEMPLATE/feature_request.md`
+
 ```markdown
 ---
 name: Feature request
@@ -154,15 +164,19 @@ labels: 'enhancement'
 ---
 
 ## Feature description
+
 What feature are you requesting?
 
 ## Use case
+
 Why do you need this? How would you use it?
 
 ## Alternatives
+
 Have you considered other solutions?
 
 ## Additional context
+
 Any other details?
 ```
 
@@ -171,6 +185,7 @@ Any other details?
 ## What You Need in `.vscode/` (AI-Friendly Development)
 
 ### `.vscode/settings.json`
+
 ```json
 {
   "editor.formatOnSave": true,
@@ -183,9 +198,7 @@ Any other details?
   "[tailwindcss]": {
     "editor.defaultFormatter": "bradlc.vscode-tailwindcss"
   },
-  "tailwindCSS.experimental.classRegex": [
-    ["clsx\\(([^)]*)\\)", "(?:'|\"|`)([^']*)(?:'|\"|`)"]
-  ],
+  "tailwindCSS.experimental.classRegex": [["clsx\\(([^)]*)\\)", "(?:'|\"|`)([^']*)(?:'|\"|`)"]],
   "files.exclude": {
     "**/.DS_Store": true,
     "**/node_modules": true,
@@ -199,6 +212,7 @@ Any other details?
 ```
 
 **Key settings:**
+
 - `formatOnSave`: Auto-fixes Copilot-generated code style
 - `tailwindCSS`: IntelliSense for Tailwind classes (critical!)
 - `typescript.tsdk`: Use local TypeScript (catch type errors)
@@ -206,6 +220,7 @@ Any other details?
 ---
 
 ### `.vscode/extensions.json`
+
 ```json
 {
   "recommendations": [
@@ -222,6 +237,7 @@ Any other details?
 ```
 
 **What each does:**
+
 - **Copilot**: AI code generation (essential)
 - **Copilot Chat**: Ask questions in chat (optional but useful)
 - **Prettier**: Code formatter (catches AI style issues)
@@ -236,6 +252,7 @@ When you open repo, VSCode prompts: "Install recommended extensions?" â†’ C
 ---
 
 ### `.vscode/launch.json`
+
 ```json
 {
   "version": "0.2.0",
@@ -264,6 +281,7 @@ When you open repo, VSCode prompts: "Install recommended extensions?" â†’ C
 ```
 
 **Usage:**
+
 - Press **F5** in VSCode â†’ Select "Electron (Main)" â†’ App launches with debugger attached
 - Set breakpoints in any TypeScript file
 - Inspect variables, step through code
@@ -274,6 +292,7 @@ When you open repo, VSCode prompts: "Install recommended extensions?" â†’ C
 ## Additional Root Files (AI-First)
 
 ### `.editorconfig`
+
 ```
 root = true
 
@@ -294,6 +313,7 @@ trim_trailing_whitespace = false
 ---
 
 ### `.eslintrc.cjs`
+
 ```javascript
 module.exports = {
   root: true,
@@ -301,8 +321,8 @@ module.exports = {
   extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended'],
   rules: {
     '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-    'no-console': ['warn', { allow: ['warn', 'error'] }]
-  }
+    'no-console': ['warn', { allow: ['warn', 'error'] }],
+  },
 };
 ```
 
@@ -311,6 +331,7 @@ module.exports = {
 ---
 
 ### `.prettierrc.json`
+
 ```json
 {
   "semi": true,
@@ -327,6 +348,7 @@ module.exports = {
 ---
 
 ### `tsconfig.json` (Strict Mode for AI)
+
 ```json
 {
   "compilerOptions": {
@@ -364,6 +386,7 @@ module.exports = {
 ---
 
 ### `package.json` (Scripts for AI Workflow)
+
 ```json
 {
   "scripts": {
@@ -393,6 +416,7 @@ module.exports = {
 ```
 
 **Common commands you'll use:**
+
 ```bash
 npm run dev                # Start Vite + watch for changes
 npm run build              # Production build
@@ -471,6 +495,7 @@ GitHub handles rest:
 ---
 
 **Result:** When Copilot generates code, your tools automatically:
+
 - âœ… Format it (Prettier)
 - âœ… Check types (TypeScript strict mode)
 - âœ… Find bugs (ESLint)

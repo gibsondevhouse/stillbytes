@@ -9,11 +9,13 @@
 **Output File:** `/Users/gibdevlite/dev-team/projects/stillbytes/devdocs/research/research002.md`
 
 **Context from Round 1:**
+
 - ✅ HIGH priority complete (LibRaw, Sharp, Canvas, HSL, Tone Curves, Clipping, Filter Pipeline, Memory, Web Workers)
 - ✅ Core tech stack decisions locked in (see research001.md)
 - 🎯 NOW: Research metadata handling, storage, Electron integration, state management
 
 **Instructions:**
+
 1. Read all sections below (1.2-1.4, 2.3-2.4) and identify all research items marked with [ ]
 2. For each research item, conduct thorough investigation using your web search capabilities
 3. Reference decisions from research001.md where applicable (e.g., "Given we're using Sharp for export...")
@@ -29,6 +31,7 @@
 7. Format using Markdown with clear headers matching the structure below
 
 **Priority Order for This Round:**
+
 - CRITICAL: Section 1.3 (IndexedDB - core to MVP), 1.4 (Electron IPC - security risk)
 - HIGH: Section 1.2 (ExifTool, XMP - user data), 2.3 (Undo/redo - UX critical)
 - MEDIUM: Section 2.4 (React Context - performance nice-to-have)
@@ -49,6 +52,7 @@ Begin research after reading this complete document.
 ## 1.2 METADATA & FILE FORMATS
 
 ### 1.2.1 ExifTool Integration ✅ COMPLETE
+
 - [x] **ExifTool Node.js Wrapper**
   - Research: exiftool-vendored vs exiftool.js vs subprocess
   - **DECISION:** exiftool-vendored (5.4ms/file, TypeScript support, maxProcs: 8)
@@ -72,6 +76,7 @@ Begin research after reading this complete document.
   - Deliverable: Photo interface with EXIF properties ✅
 
 ### 1.2.2 XMP Sidecar Specification ✅ COMPLETE
+
 - [x] **XMP Format for Edit History**
   - Research: Adobe XMP spec, Lightroom develop settings format
   - **DECISION:** Use crs: namespace (Camera Raw Schema), operations not pixels
@@ -94,6 +99,7 @@ Begin research after reading this complete document.
   - Deliverable: XMP service (read, write, merge) ✅
 
 ### 1.2.3 Lightroom/Capture One Compatibility ⏸️ DEFERRED TO PHASE 2
+
 - [ ] **Preset Import/Export**
   - Research: Import .lrtemplate, .xmp, .cube (LUT) files
   - **DECISION:** XMP sidecar generation (MVP) sufficient; preset import Phase 2
@@ -109,6 +115,7 @@ Begin research after reading this complete document.
 ## 1.3 STORAGE & DATABASE (CRITICAL) ✅ COMPLETE
 
 ### 1.3.1 IndexedDB Best Practices ✅ COMPLETE
+
 - [x] **Dexie.js vs Native IndexedDB**
   - Research: Dexie.js benefits, learning curve, bundle size
   - **DECISION:** Dexie.js for MVP (2-3× faster, TypeScript support)
@@ -153,6 +160,7 @@ Begin research after reading this complete document.
   - Deliverable: Backup/restore service spec ✅
 
 ### 1.3.2 SQLite vs IndexedDB Decision ✅ COMPLETE
+
 - [x] **When to Use SQLite (Electron)**
   - Research: better-sqlite3, performance vs IndexedDB
   - **DECISION:** IndexedDB for MVP (<5K photos); SQLite Phase 2 for FTS5
@@ -178,6 +186,7 @@ Begin research after reading this complete document.
 ## 1.4 ELECTRON & DESKTOP INTEGRATION (CRITICAL) ✅ COMPLETE
 
 ### 1.4.1 Electron IPC Security Patterns ✅ COMPLETE
+
 - [x] **Context Isolation & Preload Scripts**
   - Research: Secure IPC between main and renderer processes
   - **DECISION:** contextIsolation: true + preload whitelist via contextBridge
@@ -201,6 +210,7 @@ Begin research after reading this complete document.
   - Deliverable: IPC service wrapper with TypeScript types ✅
 
 ### 1.4.2 File System Access Patterns ✅ COMPLETE
+
 - [x] **Secure File Operations**
   - Research: Read/write without compromising security
   - **DECISION:** dialog API + fs.promises + progress IPC events
@@ -223,6 +233,7 @@ Begin research after reading this complete document.
   - Deliverable: Drag-drop handler component ✅
 
 ### 1.4.3 Electron Performance & Packaging ⏸️ PARTIAL (MVP SCOPED)
+
 - [x] **Build & Distribution**
   - Research: electron-builder vs electron-forge
   - **DECISION:** electron-builder (simpler config, CI/CD ready)
@@ -249,6 +260,7 @@ Begin research after reading this complete document.
 ## 2.3 UNDO/REDO & STATE MANAGEMENT (HIGH) ✅ COMPLETE
 
 ### 2.3.1 Edit History Patterns ✅ COMPLETE
+
 - [x] **Command Pattern Implementation**
   - Research: Command pattern for undo/redo in React
   - **DECISION:** useReducer + past/present/future arrays, operations only
@@ -272,6 +284,7 @@ Begin research after reading this complete document.
   - Deliverable: EditOperation TypeScript interfaces ✅
 
 ### 2.3.2 Undo/Redo UI Patterns ✅ COMPLETE
+
 - [x] **Keyboard Shortcuts**
   - Research: Standard shortcuts (Cmd+Z, Cmd+Shift+Z)
   - **DECISION:** useEffect + keydown listener, guard for text inputs
@@ -297,6 +310,7 @@ Begin research after reading this complete document.
 ## 2.4 REACT CONTEXT PERFORMANCE (MEDIUM) ✅ COMPLETE
 
 ### 2.4.1 Context Optimization ✅ COMPLETE
+
 - [x] **Avoiding Re-render Hell**
   - Research: Context performance with large photo libraries
   - **DECISION:** Split contexts (PhotoContext + EditContext), React.memo() gallery
@@ -319,6 +333,7 @@ Begin research after reading this complete document.
   - Deliverable: State management decision matrix ✅
 
 ### 2.4.2 Optimistic Updates ✅ COMPLETE
+
 - [x] **Immediate UI Feedback**
   - Research: Optimistic updates for editing operations
   - **DECISION:** Apply to preview immediately, debounce worker updates

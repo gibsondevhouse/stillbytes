@@ -1,4 +1,5 @@
 ### Day 1: Setup Phase (2 hours)
+
 ```
 10am: "Copilot, create a Vite + React + TypeScript project"
       → Generates package.json, vite.config.ts, tsconfig.json

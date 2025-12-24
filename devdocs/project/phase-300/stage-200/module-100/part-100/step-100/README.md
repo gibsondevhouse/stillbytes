@@ -1,4 +1,5 @@
 ### Day 18-20: Glue Components (2 hours)
+
 ```
 Day 18: Paste Prompt O: "Create Layout component..."
         → Sidebar + main area, responsive

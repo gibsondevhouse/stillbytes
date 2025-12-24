@@ -1,4 +1,5 @@
 ### Day 24-25: Polish (2 hours)
+
 ```
 Day 24: "Refine dark mode, add vintage newspaper CSS"
         → Copilot generates updated styles/vintage.css

@@ -1,4 +1,5 @@
 ### Day 2-3: Database Layer (3 hours)
+
 ```
 2pm (Day 2): Paste Prompt A: "Create IndexedDB service..."
             → Copilot generates src/services/db.ts (~200 lines)

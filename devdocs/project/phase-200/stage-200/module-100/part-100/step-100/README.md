@@ -1,4 +1,5 @@
 ### Day 11-14: Edit UI Components (4 hours)
+
 ```
 Day 11-12: Paste Prompts H, I, J:
            → HSLSlider.tsx (~150 lines)

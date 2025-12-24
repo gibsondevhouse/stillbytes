@@ -1,4 +1,5 @@
 ### Day 8-10: Canvas Editing (4 hours)
+
 ```
 Day 8: Paste Prompt F: "Create Canvas filter service (HSL, brightness, contrast)..."
        → Generates src/services/imageEditor.ts (~250 lines)

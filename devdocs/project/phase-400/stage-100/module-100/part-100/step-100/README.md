@@ -1,4 +1,5 @@
 ### Day 21-23: Testing + Refinement (3 hours)
+
 ```
 Day 21: Paste Prompt Q: "Create unit tests for db.ts..."
         → Copilot generates tests/db.test.ts (~150 lines)

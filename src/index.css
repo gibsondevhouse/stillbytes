@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+
+  * {
+    @apply focus:outline-none focus:ring-2 focus:ring-vintage-accent focus:ring-opacity-50;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-vintage-accent text-white rounded hover:bg-opacity-90 transition-colors;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-gray-700 text-gray-100 rounded hover:bg-gray-600 transition-colors;
+  }
+
+  .panel {
+    @apply bg-gray-800 border border-gray-700 rounded-lg p-4;
+  }
+}

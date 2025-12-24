@@ -7,6 +7,7 @@ This file provides guidance to Gemini when working with code in this repository.
 **Stillbytes** is a free, local, AI-native RAW photo editor for photographers tired of Adobe subscriptions. The project uses an **AI-first development approach** where an AI assistant generates 100% of the production code, and the human reviews and iterates.
 
 **Tech Stack:**
+
 - Frontend: React 18 + TypeScript + Vite + Tailwind CSS + Canvas API
 - Backend: Node.js + Express
 - Image Processing: LibRaw (RAW decoding), Sharp (JPG/PNG/TIFF), ExifTool (metadata)

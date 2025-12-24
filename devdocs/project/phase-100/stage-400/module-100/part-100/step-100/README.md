@@ -1,4 +1,5 @@
 ### Day 6-7: Gallery View (2 hours)
+
 ```
 Day 6: Paste Prompt E: "Create responsive Gallery grid..."
        → Generates src/components/Gallery.tsx (~250 lines)
