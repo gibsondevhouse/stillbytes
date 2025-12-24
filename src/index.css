@@ -3,8 +3,12 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --vintage-accent: #e6b97e;
+  }
+
   body {
-    @apply antialiased;
+    @apply bg-[#1a1a1a] text-gray-100 antialiased selection:bg-vintage-accent/30;
   }
 
   * {
@@ -13,6 +17,18 @@
 }
 
 @layer components {
+  .text-vintage-accent {
+    color: var(--vintage-accent);
+  }
+  
+  .bg-vintage-accent {
+    background-color: var(--vintage-accent);
+  }
+
+  .border-vintage-accent {
+    border-color: var(--vintage-accent);
+  }
+
   .btn-primary {
     @apply px-4 py-2 bg-vintage-accent text-white rounded hover:bg-opacity-90 transition-colors;
   }
