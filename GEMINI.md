@@ -62,7 +62,8 @@ npm run format
 - **AI-First Code Generation:** 100% of production code is AI-generated. The development workflow is based on providing detailed prompts to an AI assistant.
 - **TypeScript Strict Mode:** The project uses strict TypeScript to catch errors early.
 - **React Context + Custom Hooks:** State management is handled via React Context and custom hooks.
-- **Non-Destructive Editing:** Original RAW files are never modified. Edits are stored as a sequence of operations.
+- **Non-Destructive Editing:** Original RAW files are never modified. Edits are stored as a sequence of operations (`EditOperation`) in IndexedDB and applied in real-time.
+- **Canvas Editing Engine:** The `ImageEditorService` uses `OffscreenCanvas` and direct pixel manipulation for high-performance filter application. Web-based adjustments (HSL, Exposure) are calculated using efficient pixel traversals to maintain <100ms response times.
 - **Testing:** The project uses Vitest for unit tests. The testing strategy includes unit, integration, and end-to-end tests.
 - **CI/CD:** GitHub Actions are configured for continuous integration and deployment, including building, testing, and releasing the application.
 
