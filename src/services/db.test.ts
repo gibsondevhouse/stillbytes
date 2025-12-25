@@ -204,4 +204,40 @@ describe('Database Service', () => {
     const retrieved = await getPhotoByPath('/test/photo1.CR2');
     expect(retrieved).toBeUndefined();
   });
+  it('should persist edit history updates', async () => {
+    const photo: Omit<Photo, 'id'> = {
+      filePath: '/test/photo_edited.CR2',
+      fileName: 'photo_edited.CR2',
+      fileSize: 25000000,
+      format: 'CR2',
+      thumbnail: 'test',
+      dateTaken: new Date(),
+      dateImported: new Date(),
+      rating: 0,
+      starred: false,
+      tags: [],
+      exif: { width: 8192, height: 5464 },
+      editHistory: [],
+      hasUnsavedEdits: false,
+    };
+
+    const id = await addPhoto(photo);
+
+    const edits = [
+      {
+        id: 'edit1',
+        type: 'exposure' as const,
+        parameters: { exposure: 0.5 },
+        timestamp: new Date(),
+        version: 1
+      }
+    ];
+
+    await updatePhoto(id, { editHistory: edits, hasUnsavedEdits: true });
+
+    const retrieved = await getPhotoByPath('/test/photo_edited.CR2');
+    expect(retrieved?.editHistory).toHaveLength(1);
+    expect(retrieved?.editHistory[0].type).toBe('exposure');
+    expect(retrieved?.hasUnsavedEdits).toBe(true);
+  });
 });

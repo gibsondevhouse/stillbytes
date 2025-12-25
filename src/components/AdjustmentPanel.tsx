@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { EditOperation, BrightnessContrastOperation, HSLAdjustOperation, ExposureOperation } from '@/types';
-import { Sun, Contrast, Palette, RotateCcw } from 'lucide-react';
+import { Sun, RotateCcw, Sliders, History } from 'lucide-react';
+import { HSLSlider } from './HSLSlider';
+import { BrightnessContrast } from './BrightnessContrast';
+import { EditHistory } from './EditHistory';
 
 interface AdjustmentPanelProps {
     operations: EditOperation[];
@@ -9,7 +12,11 @@ interface AdjustmentPanelProps {
     onExport: () => void;
 }
 
+type Tab = 'adjust' | 'history';
+
 export const AdjustmentPanel: React.FC<AdjustmentPanelProps> = ({ operations, onChange, onReset, onExport }) => {
+    const [activeTab, setActiveTab] = useState<Tab>('adjust');
+
     const findOp = <T extends EditOperation>(type: string): T | undefined =>
         operations.find(op => op.type === type) as T;
 
@@ -37,123 +44,80 @@ export const AdjustmentPanel: React.FC<AdjustmentPanelProps> = ({ operations, on
     const exp = findOp<ExposureOperation>('exposure')?.parameters || { exposure: 0 };
 
     return (
-        <div className="w-80 border-l border-gray-800 bg-[#1a1a1a] flex flex-col h-full overflow-y-auto">
-            <header className="p-4 border-b border-gray-800 flex items-center justify-between">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Adjustments</h3>
+        <div className="w-[300px] border-l border-pro-border bg-pro-panel flex flex-col h-full overflow-hidden">
+            {/* Tab Navigation */}
+            <div className="flex border-b border-pro-border shrink-0 h-8">
                 <button
-                    onClick={onReset}
-                    className="p-1.5 hover:bg-white/10 rounded-full text-gray-500 hover:text-white transition-colors"
-                    title="Reset all"
+                    onClick={() => setActiveTab('adjust')}
+                    className={`flex-1 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-2 transition-colors border-r border-pro-border ${activeTab === 'adjust' ? 'bg-pro-card text-pro-accent' : 'text-gray-500 hover:text-gray-300'}`}
                 >
-                    <RotateCcw size={14} />
+                    <Sliders size={12} />
+                    <span>Adjust</span>
                 </button>
-            </header>
-
-            <div className="p-6 space-y-8">
-                {/* Exposure */}
-                <div className="space-y-4">
-                    <div className="flex justify-between items-center text-xs font-medium text-gray-300">
-                        <div className="flex items-center space-x-2">
-                            <Sun size={14} className="text-gray-500" />
-                            <span>Exposure</span>
-                        </div>
-                        <span className="font-mono text-vintage-accent">{(exp.exposure > 0 ? '+' : '') + exp.exposure.toFixed(2)}</span>
-                    </div>
-                    <input
-                        type="range" min="-3" max="3" step="0.05"
-                        value={exp.exposure}
-                        onChange={(e) => updateOp('exposure', { exposure: parseFloat(e.target.value) })}
-                        className="w-full accent-vintage-accent bg-gray-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-                    />
-                </div>
-
-                {/* Brightness & Contrast */}
-                <div className="space-y-6">
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center text-xs text-gray-300">
-                            <div className="flex items-center space-x-2">
-                                <Sun size={14} className="text-gray-500" />
-                                <span>Brightness</span>
-                            </div>
-                            <span className="font-mono">{bc.brightness}</span>
-                        </div>
-                        <input
-                            type="range" min="-100" max="100"
-                            value={bc.brightness}
-                            onChange={(e) => updateOp('brightness_contrast', { ...bc, brightness: parseInt(e.target.value) })}
-                            className="w-full accent-vintage-accent bg-gray-800 h-1 rounded-lg appearance-none cursor-pointer"
-                        />
-                    </div>
-
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center text-xs text-gray-300">
-                            <div className="flex items-center space-x-2">
-                                <Contrast size={14} className="text-gray-500" />
-                                <span>Contrast</span>
-                            </div>
-                            <span className="font-mono">{bc.contrast}</span>
-                        </div>
-                        <input
-                            type="range" min="-100" max="100"
-                            value={bc.contrast}
-                            onChange={(e) => updateOp('brightness_contrast', { ...bc, contrast: parseInt(e.target.value) })}
-                            className="w-full accent-vintage-accent bg-gray-800 h-1 rounded-lg appearance-none cursor-pointer"
-                        />
-                    </div>
-                </div>
-
-                {/* HSL */}
-                <div className="pt-4 border-t border-gray-800/50 space-y-6">
-                    <div className="flex items-center space-x-2 text-xs font-bold text-gray-500 uppercase">
-                        <Palette size={14} />
-                        <span>Color (HSL)</span>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center text-xs text-gray-300">
-                            <span>Hue</span>
-                            <span className="font-mono">{hsl.hue}°</span>
-                        </div>
-                        <input
-                            type="range" min="-180" max="180"
-                            value={hsl.hue}
-                            onChange={(e) => updateOp('hsl_adjust', { ...hsl, hue: parseInt(e.target.value) })}
-                            className="w-full accent-vintage-accent bg-gray-800 h-1 rounded-lg appearance-none cursor-pointer"
-                        />
-                    </div>
-
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center text-xs text-gray-300">
-                            <span>Saturation</span>
-                            <span className="font-mono">{hsl.saturation}</span>
-                        </div>
-                        <input
-                            type="range" min="-100" max="100"
-                            value={hsl.saturation}
-                            onChange={(e) => updateOp('hsl_adjust', { ...hsl, saturation: parseInt(e.target.value) })}
-                            className="w-full accent-vintage-accent bg-gray-800 h-1 rounded-lg appearance-none cursor-pointer"
-                        />
-                    </div>
-
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center text-xs text-gray-300">
-                            <span>Lightness</span>
-                            <span className="font-mono">{hsl.lightness}</span>
-                        </div>
-                        <input
-                            type="range" min="-100" max="100"
-                            value={hsl.lightness}
-                            onChange={(e) => updateOp('hsl_adjust', { ...hsl, lightness: parseInt(e.target.value) })}
-                            className="w-full accent-vintage-accent bg-gray-800 h-1 rounded-lg appearance-none cursor-pointer"
-                        />
-                    </div>
-                </div>
+                <button
+                    onClick={() => setActiveTab('history')}
+                    className={`flex-1 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-2 transition-colors ${activeTab === 'history' ? 'bg-pro-card text-pro-accent' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                    <History size={12} />
+                    <span>History</span>
+                </button>
             </div>
 
-            <div className="mt-auto p-4 border-t border-gray-800 flex flex-col space-y-2">
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+                {activeTab === 'adjust' ? (
+                    <>
+                        <header className="px-3 py-2 border-b border-pro-border flex items-center justify-between shrink-0 bg-pro-panel">
+                            <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Global</h3>
+                            <button
+                                onClick={onReset}
+                                className="p-1 hover:bg-white/10 rounded-sm text-gray-500 hover:text-white transition-colors"
+                                title="Reset all"
+                            >
+                                <RotateCcw size={10} />
+                            </button>
+                        </header>
+
+                        <div className="p-3 space-y-4">
+                            {/* Exposure */}
+                            <div className="space-y-1">
+                                <div className="flex justify-between items-center text-[10px] font-medium text-gray-400">
+                                    <div className="flex items-center space-x-1.5">
+                                        <Sun size={10} />
+                                        <span>Exposure</span>
+                                    </div>
+                                    <span className="font-mono text-pro-accent text-[10px]">{(exp.exposure > 0 ? '+' : '') + exp.exposure.toFixed(2)}</span>
+                                </div>
+                                <input
+                                    type="range" min="-3" max="3" step="0.05"
+                                    value={exp.exposure}
+                                    onChange={(e) => updateOp('exposure', { exposure: parseFloat(e.target.value) })}
+                                    className="range-pro"
+                                />
+                            </div>
+
+                            <BrightnessContrast
+                                values={bc}
+                                onChange={(vals) => updateOp('brightness_contrast', vals)}
+                            />
+
+                            <HSLSlider
+                                values={hsl}
+                                onChange={(vals) => updateOp('hsl_adjust', vals)}
+                            />
+                        </div>
+                    </>
+                ) : (
+                    <EditHistory
+                        operations={operations}
+                        onRestore={onChange}
+                    />
+                )}
+            </div>
+
+            <div className="mt-auto p-3 border-t border-pro-border flex flex-col space-y-2 bg-pro-panel shrink-0">
                 <button
                     onClick={onExport}
-                    className="w-full py-2 bg-white text-black rounded-lg font-bold text-xs hover:bg-gray-200 transition-colors"
+                    className="w-full py-1.5 bg-white text-black rounded-sm font-bold text-[10px] uppercase tracking-wide hover:bg-gray-200 transition-colors border border-transparent"
                 >
                     Export Final JPG
                 </button>

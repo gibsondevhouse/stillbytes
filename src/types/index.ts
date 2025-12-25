@@ -24,6 +24,8 @@ export interface Photo {
 
   // User metadata
   rating: 0 | 1 | 2 | 3 | 4 | 5;
+  flag: 'pick' | 'reject' | null;
+  colorLabel: 'red' | 'yellow' | 'green' | 'blue' | 'purple' | null;
   starred: boolean;
   tags: string[];
 
@@ -46,6 +48,8 @@ export interface Photo {
 
   // Session recovery
   hasUnsavedEdits: boolean;
+  // For Web/Dev Mode only:
+  blob?: File;
 }
 
 // ============================================================================
@@ -57,7 +61,9 @@ export type EditOperation =
   | BrightnessContrastOperation
   | ToneCurveOperation
   | ExposureOperation
-  | SharpenOperation;
+  | ExposureOperation
+  | SharpenOperation
+  | CropRotateOperation;
 
 interface BaseOperation {
   id: string; // UUID
@@ -106,6 +112,16 @@ export interface SharpenOperation extends BaseOperation {
   parameters: {
     amount: number; // 0-100
     radius: number; // 0.5-5.0
+  };
+}
+
+export interface CropRotateOperation extends BaseOperation {
+  type: 'crop_rotate';
+  parameters: {
+    crop: { x: number; y: number; width: number; height: number }; // Normalized 0-1
+    rotation: number; // Degrees
+    flipHorizontal?: boolean;
+    flipVertical?: boolean;
   };
 }
 
@@ -173,8 +189,14 @@ export interface EditHistoryState {
 declare global {
   interface Window {
     electron: {
-      selectDirectory: () => Promise<string | undefined>;
+      selectDirectory: () => Promise<string | null>;
       scanDirectory: (path: string) => Promise<string[]>;
+      readImage: (path: string) => Promise<ArrayBuffer>;
+      getAppPath: () => Promise<string>;
+      ensureDirectory: (path: string) => Promise<void>;
+      copyFile: (src: string, dest: string) => Promise<void>;
+      getFileStats: (path: string) => Promise<{ birthtime: Date; mtime: Date; size: number }>;
+      generateThumbnail: (path: string) => Promise<string>;
     };
   }
 }

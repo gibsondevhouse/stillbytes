@@ -4,40 +4,54 @@
 
 @layer base {
   :root {
-    --vintage-accent: #e6b97e;
+    /* Legacy override if needed, but pro theme is in config */
   }
 
   body {
-    @apply bg-[#1a1a1a] text-gray-100 antialiased selection:bg-vintage-accent/30;
+    @apply bg-pro-bg text-pro-text antialiased selection:bg-pro-accent/30;
   }
 
   * {
-    @apply focus:outline-none focus:ring-2 focus:ring-vintage-accent focus:ring-opacity-50;
+    @apply focus:outline-none focus:ring-1 focus:ring-pro-accent/50;
   }
 }
 
 @layer components {
-  .text-vintage-accent {
-    color: var(--vintage-accent);
-  }
-  
-  .bg-vintage-accent {
-    background-color: var(--vintage-accent);
-  }
 
-  .border-vintage-accent {
-    border-color: var(--vintage-accent);
-  }
+  /* Utility classes using pro tokens */
+  /* These are now removed because Tailwind generates them automatically from the config. */
 
+  /* Common component styles if needed */
   .btn-primary {
-    @apply px-4 py-2 bg-vintage-accent text-white rounded hover:bg-opacity-90 transition-colors;
+    @apply px-3 py-1 bg-pro-accent text-white rounded-none hover:opacity-90 transition-opacity font-medium text-[11px] tracking-wide;
   }
 
   .btn-secondary {
-    @apply px-4 py-2 bg-gray-700 text-gray-100 rounded hover:bg-gray-600 transition-colors;
+    @apply px-3 py-1 bg-[#3a3a3a] text-gray-300 rounded-none hover:bg-[#444] transition-colors text-[11px] border border-transparent hover:border-gray-500;
   }
 
   .panel {
-    @apply bg-gray-800 border border-gray-700 rounded-lg p-4;
+    @apply bg-pro-panel border-r border-pro-border p-0;
+  }
+
+  /* Pro Slider Styling */
+  .range-pro {
+    @apply w-full h-[2px] bg-gray-700 rounded-none appearance-none cursor-pointer;
+  }
+
+  .range-pro::-webkit-slider-thumb {
+    @apply appearance-none w-3 h-3 bg-gray-400 hover:bg-white border-none rounded-none shadow-none mt-[-5px];
+  }
+
+  .range-pro:focus::-webkit-slider-thumb {
+    @apply bg-pro-accent;
+  }
+
+  .range-pro::-moz-range-thumb {
+    @apply w-3 h-3 bg-gray-400 border-none rounded-none mt-[-5px];
+  }
+
+  .range-pro::-webkit-slider-runnable-track {
+    @apply w-full h-[2px] bg-[#333333];
   }
 }

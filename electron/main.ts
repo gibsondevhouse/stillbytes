@@ -12,7 +12,7 @@ function createWindow() {
         width: 1200,
         height: 800,
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: path.join(__dirname, 'preload.cjs'),
             contextIsolation: true,
             nodeIntegration: false,
         },
@@ -48,7 +48,7 @@ ipcMain.handle('select-directory', async () => {
 });
 
 ipcMain.handle('scan-directory', async (_event, dirPath: string) => {
-    const supportedExtensions = ['.CR2', '.NEF', '.ARW', '.DNG', '.RAF', '.ORF', '.RW2'];
+    const supportedExtensions = ['.CR2', '.NEF', '.ARW', '.DNG', '.RAF', '.ORF', '.RW2', '.JPG', '.PNG'];
     const files: string[] = [];
 
     async function walk(dir: string) {
@@ -74,4 +74,57 @@ ipcMain.handle('scan-directory', async (_event, dirPath: string) => {
         console.error('Scan failed:', error);
         throw error;
     }
+});
+
+// Native Image Reader (Zero-Copy flow)
+// Native Image Reader (Zero-Copy flow)
+ipcMain.handle('read-image', async (_event, filePath: string) => {
+    try {
+        const buffer = await fs.promises.readFile(filePath);
+        return buffer;
+    } catch (error) {
+        console.error('Failed to read image:', error);
+        throw error;
+    }
+});
+
+// Thumbnail Generation (Accelerated)
+ipcMain.handle('generate-thumbnail', async (_event, filePath: string) => {
+    try {
+        const sharp = (await import('sharp')).default;
+        const pipeline = sharp(filePath)
+            .resize(300, 300, { fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 70 });
+
+        const buffer = await pipeline.toBuffer();
+        return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+    } catch (error) {
+        // console.error('Failed to generate thumbnail (likely unsupported RAW format without global libvips):', error);
+        // Fallback: Return empty or handle gracefully.
+        // For RAWs, sharp often needs extra setup. If it fails, we return null, 
+        // and the frontend keeps the placeholder or tries another way.
+        return '';
+    }
+});
+
+// Library Management IPCs
+ipcMain.handle('get-app-path', () => {
+    return path.join(app.getPath('pictures'), 'Stillbytes');
+});
+
+ipcMain.handle('ensure-directory', async (_event, dirPath: string) => {
+    await fs.promises.mkdir(dirPath, { recursive: true });
+});
+
+ipcMain.handle('copy-file', async (_event, src: string, dest: string) => {
+    await fs.promises.copyFile(src, dest);
+});
+
+ipcMain.handle('get-file-stats', async (_event, filePath: string) => {
+    const stats = await fs.promises.stat(filePath);
+    return {
+        birthtime: stats.birthtime,
+        mtime: stats.mtime,
+        size: stats.size
+    };
 });

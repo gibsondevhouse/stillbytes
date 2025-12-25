@@ -22,10 +22,10 @@ class StillbytesDB extends Dexie {
 
   constructor() {
     super('StillbytesDB');
-    
-    // Schema version 1
+
+    // Schema version 1 (Backward compatible additions)
     this.version(1).stores({
-      photos: '++id, filePath, dateTaken, rating, starred, dateImported',
+      photos: '++id, filePath, dateTaken, rating, starred, flag, colorLabel, dateImported',
       libraries: '++id, name, dateCreated',
     });
   }
@@ -94,12 +94,26 @@ export async function getPhotoById(id: number): Promise<Photo | undefined> {
 export async function getAllPhotos(filters?: {
   rating?: number;
   starred?: boolean;
+  flag?: 'pick' | 'reject' | null;
   dateRange?: { start: Date; end: Date };
 }): Promise<Photo[]> {
   let collection;
 
   if (filters?.starred !== undefined) {
     collection = db.photos.where('starred').equals(filters.starred ? 1 : 0);
+  } else if (filters?.flag !== undefined) {
+    // Handling null for flag in IndexedDB can be tricky depending on how it's stored.
+    // If we only index 'pick'|'reject', null might be missing.
+    // For now assuming basic equality check works.
+    collection = db.photos.where('flag').equals(filters.flag || '');
+    // Correction: if flag is null, we might need to filter differently or store 'unflagged'
+    // Let's stick to in-memory filter for complex null checks if needed, but 'pick'/'reject' work fine.
+    if (filters.flag === null) {
+      // If searching for unflagged, might be easier to just get all and filter
+      collection = db.photos.toCollection();
+    } else {
+      collection = db.photos.where('flag').equals(filters.flag);
+    }
   } else if (filters?.rating !== undefined) {
     collection = db.photos.where('rating').aboveOrEqual(filters.rating);
   } else {
@@ -109,6 +123,10 @@ export async function getAllPhotos(filters?: {
   // Secondary filters (unindexed or complex)
   if (filters?.rating !== undefined && filters?.starred !== undefined) {
     collection = collection.filter(p => p.rating >= filters.rating!);
+  }
+
+  if (filters?.flag !== undefined && collection) { // Apply flag filter if it wasn't the primary index
+    collection = collection.filter(p => p.flag === filters.flag);
   }
 
   if (filters?.dateRange) {
@@ -190,7 +208,7 @@ export async function createLibrary(name: string): Promise<number> {
 export async function updateLibraryStats(): Promise<void> {
   const photos = await db.photos.toArray();
   const totalSize = photos.reduce((sum, p) => sum + p.fileSize, 0);
-  
+
   // For MVP: single library (ID = 1)
   await db.libraries.update(1, {
     photoCount: photos.length,
@@ -292,10 +310,12 @@ export async function seedDatabase(): Promise<void> {
       fileName: 'lake.CR2',
       fileSize: 28450122,
       format: 'CR2',
-      thumbnail: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCABkAGQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElPU1FVWV1hZWmNkZWZnaGlqc3R1dnd4eXqGhcXl5ocEByYnN4eLhEGGo6mksl5SVl69zZ2unqKys7S1tre4u7v7w0fX19fY2drh4u7f3e39/f0p/9oADAMBAAIRAxEAPwD3+iiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAP//Z',
+      thumbnail: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCABkAGQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU1Nzg5OkNERUZHSElPU1RVVldYWVpjZGVmZ2hpanN0dnd4eXqGhcXl5ocEByYnN4eLhEGGo6mksl5SVl69zZ2unqKys7S1tre4u7v7w0fX19fY2drh4u7f3e39/f0p/9oADAMBAAIRAxEAPwD3+iiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAP//Z',
       dateTaken: new Date('2024-05-15T14:20:00'),
       dateImported: new Date(),
       rating: 5,
+      flag: 'pick', // Sample data
+      colorLabel: 'green',
       starred: true,
       tags: ['landscape', 'nature'],
       exif: {
@@ -316,10 +336,12 @@ export async function seedDatabase(): Promise<void> {
       fileName: 'portrait.ARW',
       fileSize: 42100500,
       format: 'ARW',
-      thumbnail: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCABkAGQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElPU1FVWV1hZWmNkZWZnaGlqc3R1dnd4eXqGhcXl5ocEByYnN4eLhEGGo6mksl5SVl69zZ2unqKys7S1tre4u7v7w0fX19fY2drh4u7f3e39/f0p/9oADAMBAAIRAxEAPwD3+iiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKAP//Z',
+      thumbnail: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCABkAGQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU1Nzg5OkNERUZHSElPU1RVVldYWVpjZGVmZ2hpanN0dnd4eXqGhcXl5ocEByYnN4eLhEGGo6mksl5SVl69zZ2unqKys7S1tre4u7v7w0fX19fY2drh4u7f3e39/f0p/9oADAMBAAIRAxEAPwD3+iiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKAP//Z',
       dateTaken: new Date('2024-06-02T16:45:00'),
       dateImported: new Date(),
       rating: 4,
+      flag: null,
+      colorLabel: null,
       starred: false,
       tags: ['portrait', 'studio'],
       exif: {

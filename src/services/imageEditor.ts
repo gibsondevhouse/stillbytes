@@ -59,12 +59,65 @@ export class ImageEditorService {
             }
         }
 
-        // Render result to target canvas
-        const ctx = targetCanvas.getContext('2d');
-        if (ctx) {
-            targetCanvas.width = this.offscreenCanvas.width;
-            targetCanvas.height = this.offscreenCanvas.height;
-            ctx.putImageData(workingImageData, 0, 0);
+        // Check for Crop/Rotate
+        const cropOp = operations.find(op => op.type === 'crop_rotate') as any; // Cast as any for now or import type
+
+        if (cropOp) {
+            // High-quality rendering with Crop/Rotate
+            const { crop, rotation, flipHorizontal, flipVertical } = cropOp.parameters;
+
+            // 1. Put filtered pixels onto a temp canvas
+            const tempCanvas = new OffscreenCanvas(this.offscreenCanvas.width, this.offscreenCanvas.height);
+            const tempCtx = tempCanvas.getContext('2d')!;
+            tempCtx.putImageData(workingImageData, 0, 0);
+
+            // 2. Setup output dimensions
+            // crop x,y,w,h are normalized (0-1)
+            const fullW = this.offscreenCanvas.width;
+            const fullH = this.offscreenCanvas.height;
+
+            const cropW = Math.floor(crop.width * fullW);
+            const cropH = Math.floor(crop.height * fullH);
+
+            const ctx = targetCanvas.getContext('2d');
+            if (ctx) {
+                targetCanvas.width = cropW;
+                targetCanvas.height = cropH;
+
+                ctx.save();
+
+                // Move origin to center of target canvas
+                ctx.translate(cropW / 2, cropH / 2);
+
+                // Apply rotation
+                if (rotation) ctx.rotate((rotation * Math.PI) / 180);
+
+                // Handling Flips (Optimization: Scale -1, 1)
+                if (flipHorizontal) ctx.scale(-1, 1);
+                if (flipVertical) ctx.scale(1, -1);
+
+                // Calculate center of crop area in source image
+                const cropCX = (crop.x + crop.width / 2) * fullW;
+                const cropCY = (crop.y + crop.height / 2) * fullH;
+
+                // Draw image offset so crop center aligns with canvas center
+                // Since we translated canvas to (cropW/2, cropH/2), drawing at (-cropCX, -cropCY) places source(cropCX, cropCY) at origin.
+                // However, we want source(cropCX, cropCY) to be at target(cropW/2, cropH/2) which IS the origin now.
+                // Wait, drawImage takes (image, dx, dy). Defaults to (0,0).
+                // If we draw at (-cropCX, -cropCY), zero-point of image is at -cropCX. 
+                // Checks out.
+                ctx.drawImage(tempCanvas, -cropCX, -cropCY);
+
+                ctx.restore();
+            }
+        } else {
+            // Direct render (No crop)
+            const ctx = targetCanvas.getContext('2d');
+            if (ctx) {
+                targetCanvas.width = this.offscreenCanvas.width;
+                targetCanvas.height = this.offscreenCanvas.height;
+                ctx.putImageData(workingImageData, 0, 0);
+            }
         }
     }
 

@@ -5,16 +5,19 @@ export default {
   theme: {
     extend: {
       colors: {
-        vintage: {
-          paper: '#f5f1e8',
-          ink: '#2b2520',
-          gray: '#8b8680',
-          accent: '#a67c52',
-        },
+        pro: {
+          bg: '#1b1b1b',       // LrC Workspace Gray
+          panel: '#262626',    // LrC Panel Gray
+          card: '#303030',     // Slightly lighter for inputs/cards
+          border: '#3a3a3a',   // 1px separators
+          text: '#d4d4d4',     // Standard text (not pure white)
+          muted: '#8e8e8e',    // Labels
+          accent: '#4781ee',   // LrC Blue
+        }
       },
       fontFamily: {
-        serif: ['Georgia', 'Cambria', 'Times New Roman', 'serif'],
-        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
     },
   },

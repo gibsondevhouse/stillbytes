@@ -2,13 +2,13 @@
   "name": "stillbytes",
   "version": "0.1.0",
   "description": "Free, local, AI-native RAW photo editor for photographers",
-  "main": "electron/main.js",
+  "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "electron:dev": "electron .",
+    "electron:dev": "vite",
     "electron:build": "electron-builder",
     "test": "vitest",
     "test:ui": "vitest --ui",
@@ -32,7 +32,8 @@
     "lucide-react": "^0.562.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-hot-toast": "^2.4.1"
+    "react-hot-toast": "^2.4.1",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",
@@ -53,6 +54,7 @@
     "tailwindcss": "^3.3.6",
     "typescript": "^5.3.3",
     "vite": "^7.3.0",
+    "vite-plugin-electron": "^0.29.0",
     "vitest": "^4.0.16"
   },
   "build": {
