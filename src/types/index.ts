@@ -7,49 +7,60 @@
 // PHOTO & LIBRARY TYPES
 // ============================================================================
 
-export interface Photo {
+export interface MasterPhoto {
   id?: number; // Auto-increment primary key
-  filePath: string; // Unique identifier
+  filePath: string; // Unique identifier (original RAW)
   fileName: string;
   fileSize: number; // bytes
   format: 'CR2' | 'NEF' | 'ARW' | 'DNG' | 'RAF' | 'ORF' | 'RW2'; // RAW formats
 
-  // Thumbnail (150x100px ~20KB Base64 JPEG)
-  thumbnail: string; // Base64 encoded
+  // Cache/Preview Paths (Section 2.1.1)
+  cachePath: string; // Directory containing previews/masks
+  thumbnailPath: string; // thumb.jpg
+  previewPath: string; // preview.jpg
+  proxyPath: string; // smart_proxy.jpg
 
   // Dates
   dateTaken: Date;
   dateImported: Date;
-  dateModified?: Date;
 
-  // User metadata
+  // EXIF Metadata (core tags)
+  exif: {
+    camera?: string;
+    lens?: string;
+    iso?: number;
+    shutterSpeed?: string;
+    aperture?: string;
+    focalLength?: number;
+    width: number;
+    height: number;
+    colorSpace?: string;
+    copyright?: string;
+  };
+
+  // Virtual Copies (Every Master has at least one)
+  virtualCopies: VirtualCopy[];
+}
+
+export interface VirtualCopy {
+  id: string; // UUID
+  masterPhotoId: number; // Link to MasterPhoto
+  name: string; // e.g., "Original", "B&W", "Edit 1"
+  version: number; // incremented
+
+  // Metadata specific to this copy
   rating: 0 | 1 | 2 | 3 | 4 | 5;
   flag: 'pick' | 'reject' | null;
   colorLabel: 'red' | 'yellow' | 'green' | 'blue' | 'purple' | null;
   starred: boolean;
   tags: string[];
 
-  // EXIF Metadata (core tags)
-  exif: {
-    camera?: string; // e.g., "Canon EOS R5"
-    lens?: string; // e.g., "RF 24-105mm F4L"
-    iso?: number;
-    shutterSpeed?: string; // e.g., "1/250"
-    aperture?: string; // e.g., "f/4.0"
-    focalLength?: number; // mm
-    width: number; // px
-    height: number; // px
-    colorSpace?: string;
-    copyright?: string;
-  };
-
-  // Edit history (operations only, not pixels)
+  // Edit history (Specific to this copy)
   editHistory: EditOperation[];
-
-  // Session recovery
   hasUnsavedEdits: boolean;
-  // For Web/Dev Mode only:
-  blob?: File;
+
+  dateCreated: Date;
+  dateModified: Date;
 }
 
 // ============================================================================
@@ -197,6 +208,12 @@ declare global {
       copyFile: (src: string, dest: string) => Promise<void>;
       getFileStats: (path: string) => Promise<{ birthtime: Date; mtime: Date; size: number }>;
       generateThumbnail: (path: string) => Promise<string>;
+      // New background process methods for Phase 2
+      generateCacheArtifacts: (path: string, cacheDir: string) => Promise<{
+        thumbPath: string;
+        previewPath: string;
+        proxyPath: string;
+      }>;
     };
   }
 }

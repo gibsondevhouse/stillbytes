@@ -1,15 +1,43 @@
-import React from 'react';
-import { Photo } from '@/types';
+import React, { useState, useEffect } from 'react';
+import { MasterPhoto, VirtualCopy } from '@/types';
 import { Star, MoreVertical, Flag, X } from 'lucide-react';
 
+type VirtualCopyFull = VirtualCopy & { master: MasterPhoto };
+
 interface PhotoCardProps {
-    photo: Photo;
+    photo: VirtualCopyFull;
     selected: boolean;
-    onClick: (photo: Photo, metaKey: boolean, shiftKey: boolean) => void;
-    onDoubleClick: (photo: Photo) => void;
+    onClick: (photo: VirtualCopyFull, metaKey: boolean, shiftKey: boolean) => void;
+    onDoubleClick: (photo: VirtualCopyFull) => void;
 }
 
 export const PhotoCard: React.FC<PhotoCardProps> = ({ photo, selected, onClick, onDoubleClick }) => {
+    const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        async function loadThumb() {
+            if (photo.master.thumbnailPath) {
+                try {
+                    const buffer = await window.electron.readImage(photo.master.thumbnailPath);
+                    if (isMounted) {
+                        const blob = new Blob([buffer], { type: 'image/jpeg' });
+                        setThumbUrl(URL.createObjectURL(blob));
+                    }
+                } catch (e) {
+                    console.error('Failed to load card thumb', e);
+                }
+            }
+        }
+
+        loadThumb();
+        return () => {
+            isMounted = false;
+            if (thumbUrl) URL.revokeObjectURL(thumbUrl);
+        };
+    }, [photo.master.thumbnailPath]);
+
     return (
         <div
             onClick={(e) => onClick(photo, e.ctrlKey || e.metaKey, e.shiftKey)}
@@ -19,17 +47,16 @@ export const PhotoCard: React.FC<PhotoCardProps> = ({ photo, selected, onClick, 
         >
             {/* Thumbnail Container */}
             <div className="aspect-[3/2] overflow-hidden bg-black flex items-center justify-center relative">
-                {photo.thumbnail ? (
+                {thumbUrl ? (
                     <img
-                        src={photo.thumbnail}
-                        alt={photo.fileName}
+                        src={thumbUrl}
+                        alt={photo.master.fileName}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
                 ) : (
                     <div className="flex flex-col items-center justify-center space-y-2 opacity-50">
-                        {/* Placeholder for RAW files without embedded preview extraction in Web Mode */}
                         <div className="border-2 border-gray-700 rounded p-2">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{photo.format}</span>
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{photo.master.format}</span>
                         </div>
                     </div>
                 )}
@@ -76,11 +103,11 @@ export const PhotoCard: React.FC<PhotoCardProps> = ({ photo, selected, onClick, 
             {/* Metadata */}
             <div className="p-3 space-y-1">
                 <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono text-gray-400 truncate flex-1" title={photo.fileName}>
-                        {photo.fileName}
+                    <span className="text-xs font-mono text-gray-400 truncate flex-1" title={photo.master.fileName}>
+                        {photo.master.fileName}
                     </span>
                     <span className="text-[10px] bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded ml-2">
-                        {photo.format}
+                        {photo.master.format}
                     </span>
                 </div>
 
@@ -95,7 +122,7 @@ export const PhotoCard: React.FC<PhotoCardProps> = ({ photo, selected, onClick, 
                         ))}
                     </div>
                     <span className="text-[10px] text-gray-600 italic">
-                        {photo.exif.camera ? photo.exif.camera.split(' ').slice(-1) : ''}
+                        {photo.master.exif?.camera ? photo.master.exif.camera.split(' ').slice(-1) : ''}
                     </span>
                 </div>
             </div>

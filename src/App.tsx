@@ -1,19 +1,20 @@
 import { useEffect, useState } from 'react';
-import { db, initDatabase, getDatabaseStats } from '@/services/db';
+import { db, initDatabase, getDatabaseStats, getAllVirtualCopies, updateVirtualCopy } from '@/services/db';
 import { ImportDialog } from '@/components/ImportDialog';
 import { Gallery } from '@/components/Gallery';
 import { DetailView } from '@/components/DetailView';
 import { SidebarLeft } from '@/components/SidebarLeft';
 import { Layout } from '@/components/Layout';
-import { Photo } from '@/types';
-import { updatePhoto } from '@/services/db';
+import { MasterPhoto, VirtualCopy } from '@/types';
+
+type VirtualCopyFull = VirtualCopy & { master: MasterPhoto };
 
 function App() {
   const [dbInitialized, setDbInitialized] = useState(false);
   const [dbStats, setDbStats] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
-  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<VirtualCopyFull | null>(null);
 
   useEffect(() => {
     async function setupDatabase() {
@@ -34,8 +35,14 @@ function App() {
     setDbStats(stats);
   };
 
-  const handleUpdatePhoto = async (id: number, changes: Partial<Photo>) => {
-    await updatePhoto(id, changes);
+  const handleUpdatePhoto = async (id: string, changes: Partial<VirtualCopy>) => {
+    await updateVirtualCopy(id, changes);
+
+    // Refresh selected photo in memory
+    if (selectedPhoto && selectedPhoto.id === id) {
+      setSelectedPhoto({ ...selectedPhoto, ...changes });
+    }
+
     await refreshStats();
   };
 
@@ -43,18 +50,20 @@ function App() {
   const handleNav = async (direction: 'next' | 'prev') => {
     if (!selectedPhoto) return;
 
-    // Fetch all photos to find current index (MVP optimization can be done later)
-    // We match the sort order of Gallery/Filmstrip: dateTaken reverse
-    const allPhotos = await db.photos.orderBy('dateTaken').reverse().toArray();
-    const currentIndex = allPhotos.findIndex(p => p.id === selectedPhoto.id);
+    // Fetch all virtual copies to find current index
+    const allCopies = await getAllVirtualCopies();
+    // Sort logic should match Gallery
+    allCopies.sort((a, b) => b.master.dateTaken.getTime() - a.master.dateTaken.getTime());
+
+    const currentIndex = allCopies.findIndex(p => p.id === selectedPhoto.id);
 
     if (currentIndex === -1) return;
 
     let nextIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
 
     // Bounds check
-    if (nextIndex >= 0 && nextIndex < allPhotos.length) {
-      setSelectedPhoto(allPhotos[nextIndex]);
+    if (nextIndex >= 0 && nextIndex < allCopies.length) {
+      setSelectedPhoto(allCopies[nextIndex]);
     }
   };
 
@@ -108,6 +117,7 @@ function App() {
               <DetailView
                 photo={selectedPhoto}
                 onClose={() => setSelectedPhoto(null)}
+                // @ts-ignore - Update function signature changed
                 onUpdatePhoto={handleUpdatePhoto}
                 onNextPhoto={() => handleNav('next')}
                 onPrevPhoto={() => handleNav('prev')}
@@ -115,7 +125,7 @@ function App() {
               />
             ) : (
               <Gallery
-                onSelectPhoto={(photo) => setSelectedPhoto(photo)}
+                onSelectPhoto={(photo) => setSelectedPhoto(photo as any)}
                 onImportClick={() => setShowImport(true)}
               />
             )}
@@ -161,8 +171,6 @@ function App() {
           onImportComplete={refreshStats}
         />
       )}
-
-
     </Layout>
   );
 }

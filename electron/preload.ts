@@ -9,4 +9,5 @@ contextBridge.exposeInMainWorld('electron', {
     copyFile: (src: string, dest: string) => ipcRenderer.invoke('copy-file', src, dest),
     getFileStats: (path: string) => ipcRenderer.invoke('get-file-stats', path),
     generateThumbnail: (path: string) => ipcRenderer.invoke('generate-thumbnail', path),
+    generateCacheArtifacts: (path: string, cacheDir: string) => ipcRenderer.invoke('generate-cache-artifacts', path, cacheDir),
 });

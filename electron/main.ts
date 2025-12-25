@@ -128,3 +128,46 @@ ipcMain.handle('get-file-stats', async (_event, filePath: string) => {
         size: stats.size
     };
 });
+// Phase 2: High-Performance Cache Artifact Generation
+ipcMain.handle('generate-cache-artifacts', async (_event, filePath: string, cacheDir: string) => {
+    try {
+        const sharp = (await import('sharp')).default;
+
+        // Ensure the directory exists
+        await fs.promises.mkdir(cacheDir, { recursive: true });
+
+        const thumbPath = path.join(cacheDir, 'thumb.jpg');
+        const previewPath = path.join(cacheDir, 'preview.jpg');
+        const proxyPath = path.join(cacheDir, 'smart_proxy.jpg');
+
+        // Generate Thumb (360px long edge, Q60)
+        const thumbPromise = sharp(filePath)
+            .resize(360, 360, { fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 60 })
+            .toFile(thumbPath);
+
+        // Generate Preview (1920px long edge, Q80)
+        const previewPromise = sharp(filePath)
+            .resize(1920, 1920, { fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 80 })
+            .toFile(previewPath);
+
+        // Generate Smart Proxy (2560px long edge, Q90)
+        const proxyPromise = sharp(filePath)
+            .resize(2560, 2560, { fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 90 })
+            .toFile(proxyPath);
+
+        // Run in parallel
+        await Promise.all([thumbPromise, previewPromise, proxyPromise]);
+
+        return {
+            thumbPath,
+            previewPath,
+            proxyPath
+        };
+    } catch (error) {
+        console.error('Failed to generate cache artifacts:', error);
+        throw error;
+    }
+});

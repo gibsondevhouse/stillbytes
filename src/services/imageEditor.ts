@@ -1,28 +1,155 @@
+import reglModule from 'regl';
 import { EditOperation, HSLAdjustOperation, BrightnessContrastOperation, ExposureOperation } from '@/types';
 
 /**
- * High-performance Canvas Filter Service for Stillbytes
- * Handles pixel manipulation for real-time photo editing
+ * High-performance WebGL Filter Service for Stillbytes
+ * Uses regl for GPU-accelerated photo adjustments
  */
 export class ImageEditorService {
-    private offscreenCanvas: OffscreenCanvas | null = null;
-    private offscreenCtx: OffscreenCanvasRenderingContext2D | null = null;
-    private originalImageData: ImageData | null = null;
+    private regl: any = null;
+    private sourceTexture: any = null;
+    private drawCommand: any = null;
+    private sourceWidth: number = 0;
+    private sourceHeight: number = 0;
 
     /**
      * Initialize the service with an image
      */
     public async init(image: HTMLImageElement | HTMLCanvasElement): Promise<void> {
-        const width = image instanceof HTMLImageElement ? image.naturalWidth : image.width;
-        const height = image instanceof HTMLImageElement ? image.naturalHeight : image.height;
+        this.sourceWidth = image instanceof HTMLImageElement ? image.naturalWidth : image.width;
+        this.sourceHeight = image instanceof HTMLImageElement ? image.naturalHeight : image.height;
 
-        this.offscreenCanvas = new OffscreenCanvas(width, height);
-        this.offscreenCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
+        // Create a hidden canvas for regl if we don't have one yet
+        if (!this.regl) {
+            const canvas = document.createElement('canvas');
+            // We'll resize this when drawing
+            this.regl = reglModule({
+                canvas,
+                attributes: { preserveDrawingBuffer: true, antialias: false }
+            });
 
-        if (!this.offscreenCtx) throw new Error('Could not get offscreen context');
+            this.createDrawCommand();
+        }
 
-        this.offscreenCtx.drawImage(image, 0, 0);
-        this.originalImageData = this.offscreenCtx.getImageData(0, 0, width, height);
+        // Upload image to GPU
+        if (this.sourceTexture) this.sourceTexture.destroy();
+        this.sourceTexture = this.regl.texture({
+            data: image,
+            flipY: true, // WebGL texture coord system
+            min: 'linear',
+            mag: 'linear'
+        });
+    }
+
+    private createDrawCommand() {
+        this.drawCommand = this.regl({
+            frag: `
+            precision highp float;
+            uniform sampler2D texture;
+            uniform float exposure;
+            uniform float brightness;
+            uniform float contrast;
+            uniform vec3 hslAdjust; // x: hue, y: sat, z: light
+            varying vec2 vUv;
+
+            // RGB to HSL helper
+            vec3 rgb2hsl(vec3 c) {
+                float maxVal = max(c.r, max(c.g, c.b));
+                float minVal = min(c.r, min(c.g, c.b));
+                float h, s, l = (maxVal + minVal) / 2.0;
+                if (maxVal == minVal) {
+                    h = s = 0.0;
+                } else {
+                    float d = maxVal - minVal;
+                    s = l > 0.5 ? d / (2.0 - maxVal - minVal) : d / (maxVal + minVal);
+                    if (maxVal == c.r) h = (c.g - c.b) / d + (c.g < c.b ? 6.0 : 0.0);
+                    else if (maxVal == c.g) h = (c.b - c.r) / d + 2.0;
+                    else if (maxVal == c.b) h = (c.r - c.g) / d + 4.0;
+                    h /= 6.0;
+                }
+                return vec3(h, s, l);
+            }
+
+            // HSL to RGB helper
+            float hue2rgb(float p, float q, float t) {
+                if (t < 0.0) t += 1.0;
+                if (t > 1.0) t -= 1.0;
+                if (t < 1.0/6.0) return p + (q - p) * 6.0 * t;
+                if (t < 1.0/2.0) return q;
+                if (t < 2.0/3.0) return p + (q - p) * (2.0/3.0 - t) * 6.0;
+                return p;
+            }
+
+            vec3 hsl2rgb(vec3 hsl) {
+                vec3 rgb;
+                if (hsl.y == 0.0) {
+                    rgb = vec3(hsl.z);
+                } else {
+                    float q = hsl.z < 0.5 ? hsl.z * (1.0 + hsl.y) : hsl.z + hsl.y - hsl.z * hsl.y;
+                    float p = 2.0 * hsl.z - q;
+                    rgb.r = hue2rgb(p, q, hsl.x + 1.0/3.0);
+                    rgb.g = hue2rgb(p, q, hsl.x);
+                    rgb.b = hue2rgb(p, q, hsl.x - 1.0/3.0);
+                }
+                return rgb;
+            }
+
+            void main() {
+                vec4 tex = texture2D(texture, vUv);
+                vec3 color = tex.rgb;
+
+                // 1. Exposure
+                color *= pow(2.0, exposure);
+
+                // 2. Brightness
+                color += (brightness / 255.0);
+
+                // 3. Contrast
+                float factor = (259.0 * (contrast + 255.0)) / (255.0 * (259.0 - contrast));
+                color = factor * (color - 0.5) + 0.5;
+
+                // 4. HSL Adjust
+                vec3 hsl = rgb2hsl(color);
+                hsl.x = mod(hsl.x + hslAdjust.x / 360.0, 1.0);
+                hsl.y = clamp(hsl.y * (1.0 + hslAdjust.y / 100.0), 0.0, 1.0);
+                hsl.z = clamp(hsl.z + hslAdjust.z / 100.0, 0.0, 1.0);
+                color = hsl2rgb(hsl);
+
+                gl_FragColor = vec4(clamp(color, 0.0, 1.0), tex.a);
+            }
+            `,
+            vert: `
+            precision highp float;
+            attribute vec2 position;
+            attribute vec2 uv;
+            varying vec2 vUv;
+            uniform vec4 crop; // x, y, w, h
+            uniform float rotation;
+            void main() {
+                vUv = uv;
+                // Apply crop to UVs
+                vUv = vec2(crop.x + uv.x * crop.z, crop.y + uv.y * crop.w);
+                
+                // For now, rotation can be handled by the target canvas or here
+                // Simplified: rotation handled by vertex projection if needed
+                gl_Position = vec4(position, 0, 1);
+            }
+            `,
+            attributes: {
+                position: [[-1, -1], [1, -1], [-1, 1], [-1, 1], [1, -1], [1, 1]],
+                uv: [[0, 0], [1, 0], [0, 1], [0, 1], [1, 0], [1, 1]]
+            },
+            uniforms: {
+                texture: this.sourceTexture,
+                exposure: this.regl.prop('exposure'),
+                brightness: this.regl.prop('brightness'),
+                contrast: this.regl.prop('contrast'),
+                hslAdjust: this.regl.prop('hslAdjust'),
+                crop: this.regl.prop('crop'),
+                rotation: this.regl.prop('rotation')
+            },
+            count: 6
+        });
     }
 
     /**
@@ -32,190 +159,53 @@ export class ImageEditorService {
         operations: EditOperation[],
         targetCanvas: HTMLCanvasElement
     ): void {
-        if (!this.originalImageData || !this.offscreenCtx || !this.offscreenCanvas) return;
+        if (!this.regl || !this.sourceTexture) return;
 
-        // Start with a fresh copy of original pixels
-        const workingImageData = new ImageData(
-            new Uint8ClampedArray(this.originalImageData.data),
-            this.originalImageData.width,
-            this.originalImageData.height
-        );
+        // Parse operations
+        const exposure = (operations.find(o => o.type === 'exposure') as ExposureOperation)?.parameters.exposure || 0;
+        const bc = (operations.find(o => o.type === 'brightness_contrast') as BrightnessContrastOperation)?.parameters || { brightness: 0, contrast: 0 };
+        const hsl = (operations.find(o => o.type === 'hsl_adjust') as HSLAdjustOperation)?.parameters || { hue: 0, saturation: 0, lightness: 0 };
+        const cropOp = operations.find(o => o.type === 'crop_rotate') as any;
 
-        const data = workingImageData.data;
+        const cropParams = cropOp?.parameters.crop || { x: 0, y: 0, width: 1, height: 1 };
+        const rotation = cropOp?.parameters.rotation || 0;
 
-        // Apply operations in sequence
-        for (const op of operations) {
-            switch (op.type) {
-                case 'brightness_contrast':
-                    this.applyBrightnessContrast(data, op as BrightnessContrastOperation);
-                    break;
-                case 'hsl_adjust':
-                    this.applyHSL(data, op as HSLAdjustOperation);
-                    break;
-                case 'exposure':
-                    this.applyExposure(data, op as ExposureOperation);
-                    break;
-                // Other operations can be added here
-            }
-        }
+        // Resize regl canvas and target
+        const outW = Math.floor(cropParams.width * this.sourceWidth);
+        const outH = Math.floor(cropParams.height * this.sourceHeight);
 
-        // Check for Crop/Rotate
-        const cropOp = operations.find(op => op.type === 'crop_rotate') as any; // Cast as any for now or import type
+        // Adjust for 90/270 degree rotation switching width/height
+        const isSideways = Math.abs(rotation) % 180 !== 0;
+        const targetW = isSideways ? outH : outW;
+        const targetH = isSideways ? outW : outH;
 
-        if (cropOp) {
-            // High-quality rendering with Crop/Rotate
-            const { crop, rotation, flipHorizontal, flipVertical } = cropOp.parameters;
+        targetCanvas.width = targetW;
+        targetCanvas.height = targetH;
 
-            // 1. Put filtered pixels onto a temp canvas
-            const tempCanvas = new OffscreenCanvas(this.offscreenCanvas.width, this.offscreenCanvas.height);
-            const tempCtx = tempCanvas.getContext('2d')!;
-            tempCtx.putImageData(workingImageData, 0, 0);
+        // Regl draws to its own internal canvas first
+        this.regl._gl.canvas.width = targetW;
+        this.regl._gl.canvas.height = targetH;
 
-            // 2. Setup output dimensions
-            // crop x,y,w,h are normalized (0-1)
-            const fullW = this.offscreenCanvas.width;
-            const fullH = this.offscreenCanvas.height;
+        this.regl.clear({ color: [0, 0, 0, 1] });
 
-            const cropW = Math.floor(crop.width * fullW);
-            const cropH = Math.floor(crop.height * fullH);
+        // Draw to regl canvas
+        this.drawCommand({
+            exposure,
+            brightness: bc.brightness,
+            contrast: bc.contrast,
+            hslAdjust: [hsl.hue, hsl.saturation, hsl.lightness],
+            crop: [cropParams.x, 1.0 - (cropParams.y + cropParams.height), cropParams.width, cropParams.height], // Flip Y for crop
+            rotation
+        });
 
-            const ctx = targetCanvas.getContext('2d');
-            if (ctx) {
-                targetCanvas.width = cropW;
-                targetCanvas.height = cropH;
-
-                ctx.save();
-
-                // Move origin to center of target canvas
-                ctx.translate(cropW / 2, cropH / 2);
-
-                // Apply rotation
-                if (rotation) ctx.rotate((rotation * Math.PI) / 180);
-
-                // Handling Flips (Optimization: Scale -1, 1)
-                if (flipHorizontal) ctx.scale(-1, 1);
-                if (flipVertical) ctx.scale(1, -1);
-
-                // Calculate center of crop area in source image
-                const cropCX = (crop.x + crop.width / 2) * fullW;
-                const cropCY = (crop.y + crop.height / 2) * fullH;
-
-                // Draw image offset so crop center aligns with canvas center
-                // Since we translated canvas to (cropW/2, cropH/2), drawing at (-cropCX, -cropCY) places source(cropCX, cropCY) at origin.
-                // However, we want source(cropCX, cropCY) to be at target(cropW/2, cropH/2) which IS the origin now.
-                // Wait, drawImage takes (image, dx, dy). Defaults to (0,0).
-                // If we draw at (-cropCX, -cropCY), zero-point of image is at -cropCX. 
-                // Checks out.
-                ctx.drawImage(tempCanvas, -cropCX, -cropCY);
-
-                ctx.restore();
-            }
-        } else {
-            // Direct render (No crop)
-            const ctx = targetCanvas.getContext('2d');
-            if (ctx) {
-                targetCanvas.width = this.offscreenCanvas.width;
-                targetCanvas.height = this.offscreenCanvas.height;
-                ctx.putImageData(workingImageData, 0, 0);
-            }
+        // Sync regl canvas to target canvas
+        // This is necessary because targetCanvas is provided from React ref
+        const ctx = targetCanvas.getContext('2d');
+        if (ctx) {
+            ctx.drawImage(this.regl._gl.canvas, 0, 0);
         }
     }
 
-    /**
-     * Fast Brightness/Contrast adjustment
-     */
-    private applyBrightnessContrast(data: Uint8ClampedArray, op: BrightnessContrastOperation): void {
-        const { brightness, contrast } = op.parameters;
-        const b = brightness; // -100 to 100
-        const factor = (259 * (contrast + 255)) / (255 * (259 - contrast)); // Traditional contrast formula
-
-        for (let i = 0; i < data.length; i += 4) {
-            // RBC (Red, Green, Blue)
-            for (let j = 0; j < 3; j++) {
-                let val = data[i + j];
-                // Brightness
-                val += b;
-                // Contrast
-                val = factor * (val - 128) + 128;
-                data[i + j] = Math.max(0, Math.min(255, val));
-            }
-        }
-    }
-
-    /**
-     * Fast HSL adjustment
-     */
-    private applyHSL(data: Uint8ClampedArray, op: HSLAdjustOperation): void {
-        const { hue, saturation, lightness } = op.parameters;
-        const sFact = (saturation + 100) / 100;
-        const lFact = lightness / 100;
-
-        for (let i = 0; i < data.length; i += 4) {
-            let r = data[i] / 255;
-            let g = data[i + 1] / 255;
-            let b = data[i + 2] / 255;
-
-            // Convert to HSL
-            const max = Math.max(r, g, b), min = Math.min(r, g, b);
-            let h = 0, s, l = (max + min) / 2;
-
-            if (max === min) {
-                h = s = 0;
-            } else {
-                const d = max - min;
-                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-                switch (max) {
-                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-                    case g: h = (b - r) / d + 2; break;
-                    case b: h = (r - g) / d + 4; break;
-                }
-                h /= 6;
-            }
-
-            // Apply Adjustments
-            h = (h + hue / 360) % 1;
-            if (h < 0) h += 1;
-            s = Math.max(0, Math.min(1, s * sFact));
-            l = Math.max(0, Math.min(1, l + lFact));
-
-            // Convert back to RGB
-            if (s === 0) {
-                r = g = b = l;
-            } else {
-                const hue2rgb = (p: number, q: number, t: number) => {
-                    if (t < 0) t += 1;
-                    if (t > 1) t -= 1;
-                    if (t < 1 / 6) return p + (q - p) * 6 * t;
-                    if (t < 1 / 2) return q;
-                    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-                    return p;
-                };
-                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-                const p = 2 * l - q;
-                r = hue2rgb(p, q, h + 1 / 3);
-                g = hue2rgb(p, q, h);
-                b = hue2rgb(p, q, h - 1 / 3);
-            }
-
-            data[i] = r * 255;
-            data[i + 1] = g * 255;
-            data[i + 2] = b * 255;
-        }
-    }
-
-    /**
-     * Exposure adjustment (linear shift)
-     */
-    private applyExposure(data: Uint8ClampedArray, op: ExposureOperation): void {
-        const exposure = op.parameters.exposure;
-        const factor = Math.pow(2, exposure);
-
-        for (let i = 0; i < data.length; i += 4) {
-            data[i] = Math.max(0, Math.min(255, data[i] * factor));
-            data[i + 1] = Math.max(0, Math.min(255, data[i + 1] * factor));
-            data[i + 2] = Math.max(0, Math.min(255, data[i + 2] * factor));
-        }
-    }
     /**
      * Export the current canvas state as a blob
      */

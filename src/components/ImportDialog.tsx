@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { addPhotos } from '@/services/db';
-import { Photo } from '@/types';
+import { MasterPhoto } from '@/types';
 import { toast } from 'react-hot-toast';
 
 interface ImportDialogProps {
@@ -84,113 +84,115 @@ export const ImportDialog: React.FC<ImportDialogProps> = ({ onImportComplete, on
                 await window.electron.ensureDirectory(libraryRoot);
             }
 
-            const photosToImport = [];
+            const photosToImport: Omit<MasterPhoto, 'id' | 'virtualCopies'>[] = [];
 
-            for (let i = 0; i < foundFiles.length; i++) {
-                const item = foundFiles[i];
+            // Helper to process a single file
+            const processItem = async (item: { path: string; file?: File }, index: number) => {
                 let finalPath = item.path;
                 let finalStats = { size: item.file ? item.file.size : 0, mtime: item.file ? new Date(item.file.lastModified) : new Date() };
 
                 // 1. COPY PHASE (Native)
                 if (isElectron && copyToLibrary) {
                     try {
-                        const baseName = item.path.split(/[\\/]/).pop() || 'unknown';
-                        setProgress({ current: i + 1, total: foundFiles.length, status: `Copying ${baseName}...` });
-
-                        // Get stats for sorting
                         const stats = await window.electron.getFileStats(item.path);
                         finalStats = { size: stats.size, mtime: stats.mtime };
 
-                        // Create date-based folder: YYYY/MM/DD
                         const date = stats.mtime;
                         const year = date.getFullYear().toString();
                         const month = (date.getMonth() + 1).toString().padStart(2, '0');
                         const day = date.getDate().toString().padStart(2, '0');
 
-                        const destDir = `${libraryRoot}\\${year}\\${month}\\${day}`;
-                        // We need path.join logic but in renderer we might rely on string manip if 'path' module missing
-                        // Assuming Windows backslashes for now based on user context, or simple template literal
-                        // Ideally we expose path.join via preload, but string concat is often enough for simple cases if careful
-                        // Let's use the OS separator from item.path if possible, or just standard forward slash which usually works in node
-
-                        // To be safe, let's ask main process to ensure dir, we pass string.
+                        const destDir = `${libraryRoot}\\Originals\\${year}\\${month}\\${day}`;
                         await window.electron.ensureDirectory(destDir);
 
-                        // File Name
-                        const fileName = item.path.split(/[\\/]/).pop() || `photo_${i}.dat`;
+                        const fileName = item.path.split(/[\\/]/).pop() || `photo_${index}.dat`;
                         const destPath = `${destDir}\\${fileName}`;
 
-                        // Copy
                         await window.electron.copyFile(item.path, destPath);
                         finalPath = destPath;
                     } catch (err) {
                         console.error(`Failed to copy ${item.path}`, err);
-                        // Continue? Or abort? Let's continue and leave in place
                     }
                 } else if (isElectron) {
-                    // Index in place: Get real stats
                     const stats = await window.electron.getFileStats(item.path);
                     finalStats = { size: stats.size, mtime: stats.mtime };
                 }
 
+                // 2. CACHE ARTIFACTS PHASE (Phase 2.1)
+                let thumbPath = '';
+                let previewPath = '';
+                let proxyPath = '';
+                let cachePath = '';
 
-                // 2. THUMBNAIL PHASE
-                let thumbnail = '';
                 if (isElectron) {
                     try {
-                        thumbnail = await window.electron.generateThumbnail(finalPath);
+                        const appPath = await window.electron.getAppPath();
+                        // Use a simple hash of the path for the cache directory
+                        const hash = btoa(finalPath).replace(/[/+=]/g, '').substring(0, 16);
+                        cachePath = `${appPath}\\Cache\\${hash.substring(0, 2)}\\${hash}`;
+
+                        const artifacts = await window.electron.generateCacheArtifacts(finalPath, cachePath);
+                        thumbPath = artifacts.thumbPath;
+                        previewPath = artifacts.previewPath;
+                        proxyPath = artifacts.proxyPath;
                     } catch (e) {
-                        console.warn('Failed to generate native thumbnail', e);
-                    }
-                } else if (item.file && (item.path.toLowerCase().endsWith('.jpg') || item.path.toLowerCase().endsWith('.png'))) {
-                    // Web Mode Fallback (Canvas)
-                    try {
-                        const bitmap = await createImageBitmap(item.file);
-                        const canvas = document.createElement('canvas');
-                        const scale = Math.min(300 / bitmap.width, 300 / bitmap.height, 1);
-                        canvas.width = bitmap.width * scale;
-                        canvas.height = bitmap.height * scale;
-                        const ctx = canvas.getContext('2d');
-                        if (ctx) {
-                            ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-                            thumbnail = canvas.toDataURL('image/jpeg', 0.7);
-                        }
-                    } catch (e) {
-                        console.warn('Failed to generate web thumbnail', e);
+                        console.warn('Failed to generate cache artifacts', e);
                     }
                 }
 
-                // 3. OBJECT CREATION
-                const photo: Omit<Photo, 'id'> = {
+                // 3. MASTER PHOTO CREATION
+                return {
                     filePath: finalPath,
-                    blob: item.file,
                     fileName: finalPath.split(/[\\/]/).pop() || 'unknown',
                     fileSize: finalStats.size,
                     format: finalPath.split('.').pop()?.toUpperCase() as any || 'DNG',
-                    thumbnail: thumbnail,
+                    cachePath: cachePath,
+                    thumbnailPath: thumbPath,
+                    previewPath: previewPath,
+                    proxyPath: proxyPath,
                     dateTaken: finalStats.mtime,
                     dateImported: new Date(),
-                    rating: 0,
-                    starred: false,
-                    colorLabel: null,
-                    flag: null,
-                    tags: [],
-                    exif: { width: 0, height: 0, camera: 'Imported', iso: 0, aperture: 0, shutterSpeed: 0, focalLength: 0 },
-                    editHistory: [],
-                    hasUnsavedEdits: false,
+                    exif: {
+                        width: 0,
+                        height: 0,
+                        camera: 'Imported',
+                        iso: 0,
+                        aperture: 'f/0',
+                        shutterSpeed: '0',
+                        focalLength: 0
+                    },
                 };
+            };
 
-                photosToImport.push(photo);
+            // BATCH PROCESSING
+            const BATCH_SIZE = 5;
+            let processedCount = 0;
 
-                // Update Progress UI every few items to avoid react thrashing if needed, but per item is fine for < 1000
-                if (i % 5 === 0) setProgress({ current: i + 1, total: foundFiles.length, status: `Importing...` });
+            for (let i = 0; i < foundFiles.length; i += BATCH_SIZE) {
+                const batch = foundFiles.slice(i, i + BATCH_SIZE);
+
+                const currentFileName = batch[0].path.split(/[\\/]/).pop() || 'batch';
+                setProgress({
+                    current: processedCount,
+                    total: foundFiles.length,
+                    status: `Processing ${currentFileName} (+${batch.length - 1} more)...`
+                });
+
+                const results = await Promise.all(
+                    batch.map((item, batchIdx) => processItem(item, i + batchIdx))
+                );
+
+                photosToImport.push(...results);
+                processedCount += batch.length;
             }
 
-            // Bulk Add to DB
-            setProgress({ current: foundFiles.length, total: foundFiles.length, status: 'Saving to database...' });
-            await addPhotos(photosToImport);
+            // Bulk Add to DB (Masters + Virtual Copies)
+            setProgress({ current: foundFiles.length, total: foundFiles.length, status: 'Creating Virtual Copies...' });
 
-            toast.success(`Broadcasting ${photosToImport.length} photos!`);
+            const { importPhotos } = await import('@/services/db');
+            await importPhotos(photosToImport);
+
+            toast.success(`Imported ${photosToImport.length} photos with Virtual Copies!`);
             onImportComplete();
             onClose();
         } catch (error) {

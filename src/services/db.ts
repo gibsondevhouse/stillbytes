@@ -10,20 +10,28 @@
  */
 
 import Dexie, { Table } from 'dexie';
-import { Photo, Library, StorageQuota } from '@/types';
+import { MasterPhoto, VirtualCopy, Library, StorageQuota } from '@/types';
 
 // ============================================================================
 // DATABASE CLASS
 // ============================================================================
 
 class StillbytesDB extends Dexie {
-  photos!: Table<Photo, number>;
+  masterPhotos!: Table<MasterPhoto, number>;
+  virtualCopies!: Table<VirtualCopy, string>;
   libraries!: Table<Library, number>;
 
   constructor() {
     super('StillbytesDB');
 
-    // Schema version 1 (Backward compatible additions)
+    // Schema version 2 (Phase 2: MasterPhoto + VirtualCopy)
+    this.version(2).stores({
+      masterPhotos: '++id, filePath, dateTaken, dateImported',
+      virtualCopies: 'id, masterPhotoId, name, rating, starred, flag, colorLabel, dateModified',
+      libraries: '++id, name, dateCreated',
+    });
+
+    // Version 1 (Compatibility - will be migrated)
     this.version(1).stores({
       photos: '++id, filePath, dateTaken, rating, starred, flag, colorLabel, dateImported',
       libraries: '++id, name, dateCreated',
@@ -39,149 +47,110 @@ const db = new StillbytesDB();
 // ============================================================================
 
 /**
- * Add a single photo to the database
+ * Add a MasterPhoto and its first Virtual Copy
  */
-export async function addPhoto(photo: Omit<Photo, 'id'>): Promise<number> {
-  try {
-    const id = await db.photos.add(photo as Photo);
-    return id;
-  } catch (error: any) {
-    if (error.name === 'QuotaExceededError') {
-      console.error('Storage quota exceeded. Attempting to cleanup...');
-      await cleanupOldThumbnails(50);
-      // Retry once
-      return await db.photos.add(photo as Photo);
-    }
-    console.error('Failed to add photo:', error);
-    throw new Error(`Failed to add photo: ${error.message || error}`);
-  }
-}
+export async function importPhoto(master: Omit<MasterPhoto, 'id' | 'virtualCopies'>): Promise<number> {
+  return await db.transaction('rw', db.masterPhotos, db.virtualCopies, async () => {
+    const masterId = await db.masterPhotos.add(master as MasterPhoto);
 
-/**
- * Add multiple photos in bulk (2-3× faster than individual adds)
- */
-export async function addPhotos(photos: Omit<Photo, 'id'>[]): Promise<number> {
-  try {
-    await db.photos.bulkAdd(photos as Photo[]);
-    return photos.length;
-  } catch (error: any) {
-    if (error.name === 'QuotaExceededError') {
-      console.error('Storage quota exceeded during bulk add.');
-      throw new Error('Storage space full. Please free up some space.');
-    }
-    console.error('Failed to bulk add photos:', error);
-    throw new Error(`Failed to bulk add photos: ${error.message || error}`);
-  }
-}
+    const firstCopy: VirtualCopy = {
+      id: crypto.randomUUID(),
+      masterPhotoId: masterId,
+      name: 'Original',
+      version: 1,
+      rating: 0,
+      starred: false,
+      colorLabel: null,
+      flag: null,
+      tags: [],
+      editHistory: [],
+      hasUnsavedEdits: false,
+      dateCreated: new Date(),
+      dateModified: new Date(),
+    };
 
-/**
- * Get photo by unique file path
- */
-export async function getPhotoByPath(filePath: string): Promise<Photo | undefined> {
-  return await db.photos.where('filePath').equals(filePath).first();
-}
-
-/**
- * Get photo by ID
- */
-export async function getPhotoById(id: number): Promise<Photo | undefined> {
-  return await db.photos.get(id);
-}
-
-/**
- * Get all photos (with optional filters)
- */
-export async function getAllPhotos(filters?: {
-  rating?: number;
-  starred?: boolean;
-  flag?: 'pick' | 'reject' | null;
-  dateRange?: { start: Date; end: Date };
-}): Promise<Photo[]> {
-  let collection;
-
-  if (filters?.starred !== undefined) {
-    collection = db.photos.where('starred').equals(filters.starred ? 1 : 0);
-  } else if (filters?.flag !== undefined) {
-    // Handling null for flag in IndexedDB can be tricky depending on how it's stored.
-    // If we only index 'pick'|'reject', null might be missing.
-    // For now assuming basic equality check works.
-    collection = db.photos.where('flag').equals(filters.flag || '');
-    // Correction: if flag is null, we might need to filter differently or store 'unflagged'
-    // Let's stick to in-memory filter for complex null checks if needed, but 'pick'/'reject' work fine.
-    if (filters.flag === null) {
-      // If searching for unflagged, might be easier to just get all and filter
-      collection = db.photos.toCollection();
-    } else {
-      collection = db.photos.where('flag').equals(filters.flag);
-    }
-  } else if (filters?.rating !== undefined) {
-    collection = db.photos.where('rating').aboveOrEqual(filters.rating);
-  } else {
-    collection = db.photos.toCollection();
-  }
-
-  // Secondary filters (unindexed or complex)
-  if (filters?.rating !== undefined && filters?.starred !== undefined) {
-    collection = collection.filter(p => p.rating >= filters.rating!);
-  }
-
-  if (filters?.flag !== undefined && collection) { // Apply flag filter if it wasn't the primary index
-    collection = collection.filter(p => p.flag === filters.flag);
-  }
-
-  if (filters?.dateRange) {
-    collection = collection.filter(
-      p => p.dateTaken >= filters.dateRange!.start && p.dateTaken <= filters.dateRange!.end
-    );
-  }
-
-  return await collection.toArray();
-}
-
-/**
- * Update photo metadata
- */
-export async function updatePhoto(id: number, changes: Partial<Photo>): Promise<void> {
-  await db.photos.update(id, changes);
-}
-
-/**
- * Update photo edit history
- */
-export async function saveEditHistory(id: number, editHistory: Photo['editHistory']): Promise<void> {
-  await db.photos.update(id, {
-    editHistory,
-    dateModified: new Date(),
-    hasUnsavedEdits: false,
+    await db.virtualCopies.add(firstCopy);
+    return masterId;
   });
 }
 
 /**
- * Mark photo as having unsaved edits (for session recovery)
+ * Bulk Import MasterPhotos and their initial Virtual Copies
  */
-export async function markPhotoUnsaved(id: number, hasUnsavedEdits: boolean): Promise<void> {
-  await db.photos.update(id, { hasUnsavedEdits });
+export async function importPhotos(masters: Omit<MasterPhoto, 'id' | 'virtualCopies'>[]): Promise<void> {
+  await db.transaction('rw', db.masterPhotos, db.virtualCopies, async () => {
+    for (const master of masters) {
+      const masterId = await db.masterPhotos.add(master as MasterPhoto);
+
+      const firstCopy: VirtualCopy = {
+        id: crypto.randomUUID(),
+        masterPhotoId: masterId,
+        name: 'Original',
+        version: 1,
+        rating: 0,
+        starred: false,
+        colorLabel: null,
+        flag: null,
+        tags: [],
+        editHistory: [],
+        hasUnsavedEdits: false,
+        dateCreated: new Date(),
+        dateModified: new Date(),
+      };
+
+      await db.virtualCopies.add(firstCopy);
+    }
+  });
 }
 
 /**
- * Delete photo by ID
+ * Get all Virtual Copies (The primary view for the app)
  */
-export async function deletePhoto(id: number): Promise<void> {
-  await db.photos.delete(id);
+export async function getAllVirtualCopies(): Promise<(VirtualCopy & { master: MasterPhoto })[]> {
+  const copies = await db.virtualCopies.toArray();
+  const results = [];
+
+  for (const copy of copies) {
+    const master = await db.masterPhotos.get(copy.masterPhotoId);
+    if (master) {
+      results.push({ ...copy, master });
+    }
+  }
+
+  return results;
 }
 
 /**
- * Delete multiple photos
+ * Get a specific Virtual Copy with its Master metadata
  */
-export async function deletePhotos(ids: number[]): Promise<void> {
-  await db.photos.bulkDelete(ids);
+export async function getVirtualCopyById(id: string): Promise<(VirtualCopy & { master: MasterPhoto }) | undefined> {
+  const copy = await db.virtualCopies.get(id);
+  if (!copy) return undefined;
+
+  const master = await db.masterPhotos.get(copy.masterPhotoId);
+  if (!master) return undefined;
+
+  return { ...copy, master };
 }
 
 /**
- * Get photos with unsaved edits (for session recovery)
+ * Update a Virtual Copy
  */
-export async function getPhotosWithUnsavedEdits(): Promise<Photo[]> {
-  return await db.photos.where('hasUnsavedEdits').equals(1).toArray();
+export async function updateVirtualCopy(id: string, changes: Partial<VirtualCopy>): Promise<void> {
+  await db.virtualCopies.update(id, {
+    ...changes,
+    dateModified: new Date(),
+  });
+}
+
+/**
+ * Delete a MasterPhoto and all its virtual copies
+ */
+export async function deleteMasterPhoto(masterId: number): Promise<void> {
+  await db.transaction('rw', db.masterPhotos, db.virtualCopies, async () => {
+    await db.virtualCopies.where('masterPhotoId').equals(masterId).delete();
+    await db.masterPhotos.delete(masterId);
+  });
 }
 
 // ============================================================================

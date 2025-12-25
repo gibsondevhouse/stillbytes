@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Photo, EditOperation } from '@/types';
+import { MasterPhoto, VirtualCopy } from '@/types';
 import { AdjustmentPanel } from './AdjustmentPanel';
 import { BeforeAfterToggle } from './BeforeAfterToggle';
 import { Filmstrip } from './Filmstrip';
@@ -9,13 +9,15 @@ import { useEditing } from '@/hooks/useEditing';
 import { useShortcuts } from '@/hooks/useShortcuts';
 import { useCanvasEditor } from '@/hooks/useCanvasEditor';
 
+type VirtualCopyFull = VirtualCopy & { master: MasterPhoto };
+
 interface DetailViewProps {
-    photo: Photo;
+    photo: VirtualCopyFull;
     onClose: () => void;
-    onUpdatePhoto: (id: number, changes: Partial<Photo>) => void;
+    onUpdatePhoto: (id: string, changes: Partial<VirtualCopy>) => void;
     onNextPhoto: () => void;
     onPrevPhoto: () => void;
-    onSelectPhoto: (photo: Photo) => void;
+    onSelectPhoto: (photo: VirtualCopyFull) => void;
 }
 
 export const DetailView: React.FC<DetailViewProps> = ({ photo, onClose, onUpdatePhoto, onNextPhoto, onPrevPhoto, onSelectPhoto }) => {
@@ -25,31 +27,26 @@ export const DetailView: React.FC<DetailViewProps> = ({ photo, onClose, onUpdate
     const [isPanelOpen, setIsPanelOpen] = useState(true);
     const [isCropping, setIsCropping] = useState(false);
 
-    // Web Mode: Create ObjectURL for blob if available
+    // Phase 2: Use Proxy Image for Editor (High Performance)
     const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
 
     useEffect(() => {
         let activeUrl: string | undefined;
 
         const load = async () => {
-            if (photo.blob) {
-                // WEB MODE: Use in-memory blob
-                activeUrl = URL.createObjectURL(photo.blob);
-                setImageUrl(activeUrl);
-            } else if ('electron' in window) {
-                // NATIVE MODE: Read from disk without importing
+            if (photo.master.proxyPath) {
                 try {
-                    const buffer = await window.electron.readImage(photo.filePath);
-                    const blob = new Blob([buffer]);
+                    const buffer = await window.electron.readImage(photo.master.proxyPath);
+                    const blob = new Blob([buffer], { type: 'image/jpeg' });
                     activeUrl = URL.createObjectURL(blob);
                     setImageUrl(activeUrl);
                 } catch (e) {
-                    console.error('Failed to load native image', e);
-                    toast.error('Could not load image from disk');
+                    console.error('Failed to load proxy image', e);
+                    // Fallback to Master File if proxy fails
+                    setImageUrl(photo.master.filePath);
                 }
             } else {
-                // Fallback / Static assets
-                setImageUrl(photo.filePath);
+                setImageUrl(photo.master.filePath);
             }
         };
 
@@ -58,7 +55,7 @@ export const DetailView: React.FC<DetailViewProps> = ({ photo, onClose, onUpdate
         return () => {
             if (activeUrl) URL.revokeObjectURL(activeUrl);
         };
-    }, [photo]);
+    }, [photo.master.proxyPath]);
 
     // Editing State (The "Brain")
     const {
@@ -80,12 +77,8 @@ export const DetailView: React.FC<DetailViewProps> = ({ photo, onClose, onUpdate
         isComparing
     );
 
-    // ... (Sync state effect - keeping existing)
-
     const handleApplyCrop = (crop: { x: number, y: number, width: number, height: number }, rotation: number) => {
-        // Remove existing crop
         const newOps = operations.filter(op => op.type !== 'crop_rotate');
-        // Add new
         newOps.push({
             id: crypto.randomUUID(),
             type: 'crop_rotate',
@@ -96,26 +89,23 @@ export const DetailView: React.FC<DetailViewProps> = ({ photo, onClose, onUpdate
         setOperations(newOps);
     };
 
-    // Helper to toggle crop mode
     const toggleCrop = () => {
         setIsCropping(!isCropping);
-        // If entering crop mode, reset zoom for better UX?
         if (!isCropping) setZoom(0.8);
         else setZoom(1);
     };
 
     // Sync state with parent (db persistence)
-    // We only update the parent when operations change
     useEffect(() => {
         if (operations !== photo.editHistory) {
-            onUpdatePhoto(photo.id!, { editHistory: operations, hasUnsavedEdits: hasUnsavedChanges });
+            onUpdatePhoto(photo.id, { editHistory: operations, hasUnsavedEdits: hasUnsavedChanges });
         }
     }, [operations, hasUnsavedChanges, photo.id]);
 
     const handleExport = async () => {
         try {
-            await exportImage(photo.fileName);
-            toast.success('Exported ' + photo.fileName);
+            await exportImage(photo.master.fileName);
+            toast.success('Exported ' + photo.master.fileName);
         } catch (err) {
             toast.error('Failed to export photo');
         }
@@ -128,20 +118,17 @@ export const DetailView: React.FC<DetailViewProps> = ({ photo, onClose, onUpdate
 
     // Keyboard Shortcuts
     useShortcuts({
-        onRate: (rating) => onUpdatePhoto(photo.id!, { rating }),
-        onFlag: (flag) => onUpdatePhoto(photo.id!, { flag }),
+        onRate: (rating) => onUpdatePhoto(photo.id, { rating: rating as any }),
+        onFlag: (flag) => onUpdatePhoto(photo.id, { flag: flag as any }),
         onNext: onNextPhoto,
         onPrev: onPrevPhoto,
         onClose: onClose,
         onCompare: setIsComparing,
-        onEnter: () => { }, // Maybe open loupe if we had one, but currently we are in loupe
+        onEnter: () => { },
     }, {
         autoAdvance: 'capsLock'
     });
 
-    // Handle Tab manually as it's UI specific and not in standard shortcut manager yet?
-    // Actually we can add it or keep local listener. Tab is tricky because it handles focus.
-    // Keeping local listener for Tab for now as useShortcuts might need an update for it.
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Tab') {
@@ -169,8 +156,8 @@ export const DetailView: React.FC<DetailViewProps> = ({ photo, onClose, onUpdate
                             <ArrowLeft size={16} />
                         </button>
                         <div className="flex flex-col">
-                            <span className="text-[11px] font-bold text-gray-200 truncate max-w-[200px]">{photo.fileName}</span>
-                            <span className="text-[9px] text-gray-500 uppercase font-mono tracking-wider">{photo.format} &bull; {photo.exif.camera}</span>
+                            <span className="text-[11px] font-bold text-gray-200 truncate max-w-[200px]">{photo.master.fileName}</span>
+                            <span className="text-[9px] text-gray-500 uppercase font-mono tracking-wider">{photo.master.format} &bull; {photo.master.exif?.camera}</span>
                         </div>
                         {isComparing && (
                             <span className="bg-pro-accent text-white text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse">
@@ -247,7 +234,6 @@ export const DetailView: React.FC<DetailViewProps> = ({ photo, onClose, onUpdate
                         )}
                     </div>
 
-                    {/* Compare Hint Overlay */}
                     <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-none opacity-50 text-[10px] uppercase font-mono tracking-widest text-gray-600">
                         Hold \ to Compare
                     </div>
@@ -256,20 +242,20 @@ export const DetailView: React.FC<DetailViewProps> = ({ photo, onClose, onUpdate
                 {/* Footer Info */}
                 <footer className="h-8 border-t border-pro-border bg-pro-panel flex items-center px-4 justify-between z-10 text-[10px] text-gray-500 font-mono">
                     <div className="flex space-x-4">
-                        <span>ISO {photo.exif.iso}</span>
-                        <span>{photo.exif.shutterSpeed}s</span>
-                        <span>{photo.exif.aperture}</span>
-                        <span>{photo.exif.focalLength}mm</span>
+                        <span>ISO {photo.master.exif?.iso}</span>
+                        <span>{photo.master.exif?.shutterSpeed}s</span>
+                        <span>{photo.master.exif?.aperture}</span>
+                        <span>{photo.master.exif?.focalLength}mm</span>
                     </div>
                     <div>
-                        {photo.exif.width} x {photo.exif.height}
+                        {photo.master.exif?.width} x {photo.master.exif?.height}
                     </div>
                 </footer>
 
                 {/* Filmstrip */}
                 <Filmstrip
                     activePhotoId={photo.id}
-                    onSelectPhoto={onSelectPhoto}
+                    onSelectPhoto={onSelectPhoto as any}
                 />
             </div>
 
